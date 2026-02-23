@@ -3,8 +3,12 @@
   "name": "Scroll & Crop Screenshot",
   "version": "1.0",
   "description": "Take a screenshot of any length. Use the down arrow key to increase the size.",
-  "permissions": ["activeTab", "scripting", "tabs"],
-  "host_permissions": ["<all_urls>"],
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "tabs",
+    "storage"
+  ],
   "action": {
     "default_title": "Take Screenshot"
   },

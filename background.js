@@ -17,5 +17,11 @@ chrome.runtime.onMessage.addListener((request, sender, sendResponse) => {
       sendResponse(dataUrl);
     });
     return true; // Keep the message channel open for the async response
+  } else if (request.action === "openPreview") {
+    chrome.storage.local.set({ capturedImage: request.dataUrl }, () => {
+      chrome.tabs.create({ url: chrome.runtime.getURL("preview.html") });
+      sendResponse({ success: true });
+    });
+    return true;
   }
 });

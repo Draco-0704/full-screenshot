@@ -1,4 +1,4 @@
-(function() {
+(function () {
   if (document.getElementById('screenshot-overlay')) {
     return; // Already injected
   }
@@ -12,29 +12,48 @@
   overlay.appendChild(backdrop);
 
   let selection = null;
-  let selRect = { left: 100, top: 100, width: 400, height: 300 };
+  let selRect = { left: 0, top: 0, width: 0, height: 0 };
+  let isDrawing = false;
+  let isDragging = false;
+  let isResizing = false;
+  let resizeHandle = null;
+  let startX, startY;
+  let handlesCreated = false;
 
-  // Initialize selection in the center of viewport
-  selRect.left = (window.innerWidth - 400) / 2;
-  selRect.top = window.scrollY + (window.innerHeight - 300) / 2;
+  // Initial prompt hint
+  const initialHint = document.createElement('div');
+  initialHint.className = 'hint';
+  initialHint.innerText = 'Click and drag to select an area.';
+  initialHint.style.position = 'absolute';
+  initialHint.style.top = '10px';
+  initialHint.style.left = '10px';
+  initialHint.style.zIndex = '2147483647';
+  backdrop.appendChild(initialHint);
+
+  function createHandles() {
+    if (handlesCreated) return;
+    const positions = ['nw', 'n', 'ne', 'w', 'e', 'sw', 's', 'se'];
+    positions.forEach(pos => {
+      const handle = document.createElement('div');
+      handle.className = `resize-handle handle-${pos}`;
+      handle.dataset.pos = pos;
+      selection.appendChild(handle);
+    });
+    handlesCreated = true;
+  }
 
   function renderSelection() {
     if (!selection) {
       selection = document.createElement('div');
       selection.className = 'selection';
-      
-      const hint = document.createElement('div');
-      hint.className = 'hint';
-      hint.innerText = 'Use Arrow keys to expand. Shift + Arrow to shrink.';
-      selection.appendChild(hint);
 
       const controls = document.createElement('div');
       controls.className = 'controls';
-      
+
       const btnDone = document.createElement('button');
       btnDone.innerText = 'Done / OK';
       btnDone.onclick = captureAndSave;
-      
+
       const btnCancel = document.createElement('button');
       btnCancel.className = 'cancel';
       btnCancel.innerText = 'Cancel';
@@ -45,85 +64,155 @@
       selection.appendChild(controls);
 
       overlay.appendChild(selection);
-      backdrop.style.display = 'none'; // Hide backdrop once selection exists
+      initialHint.remove(); // Remove initial dragging hint
     }
+
+    createHandles();
 
     // Convert document coordinates to viewport coordinates for the fixed overlay
     const viewportTop = selRect.top - window.scrollY;
     const viewportLeft = selRect.left - window.scrollX;
-    
+
     selection.style.left = viewportLeft + 'px';
     selection.style.top = viewportTop + 'px';
     selection.style.width = selRect.width + 'px';
     selection.style.height = selRect.height + 'px';
+
+    // Hide part of the backdrop where selection is by using a polygon clip-path
+    // This makes the selected area "cut out" of the dimming overlay
+    const t = viewportTop, r = viewportLeft + selRect.width, b = viewportTop + selRect.height, l = viewportLeft;
+    backdrop.style.clipPath = `polygon(0% 0%, 0% 100%, ${l}px 100%, ${l}px ${t}px, ${r}px ${t}px, ${r}px ${b}px, ${l}px ${b}px, ${l}px 100%, 100% 100%, 100% 0%)`;
   }
 
-  renderSelection();
+  // Mouse event handlers
+  function handleMouseDown(e) {
+    if (e.target.classList.contains('resize-handle')) {
+      isResizing = true;
+      resizeHandle = e.target.dataset.pos;
+      startX = e.clientX;
+      startY = e.clientY;
+      e.stopPropagation();
+      return;
+    }
 
-  // Handle keyboard events
-  function handleKeyDown(e) {
-    const step = 50;
-    if (e.key === 'Escape') {
-      closeOverlay();
-    } else if (e.key === 'ArrowDown') {
-      e.preventDefault();
-      if (e.shiftKey) {
-        selRect.height = Math.max(step, selRect.height - step);
-      } else {
-        selRect.height += step;
-        const viewportBottom = window.scrollY + window.innerHeight;
-        if (selRect.top + selRect.height > viewportBottom - 100) {
-          window.scrollBy(0, step);
-        }
-      }
+    if (e.target.closest('.controls')) return; // Ignore clicks on buttons
+
+    if (selection && selection.contains(e.target) && e.target !== selection) {
+      // If clicking inside selection but not on controls/handles
+      // We handle selection drag
+      isDragging = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      return;
+    }
+
+    if (e.target === selection || e.target.closest('.selection')) {
+      isDragging = true;
+      startX = e.clientX;
+      startY = e.clientY;
+      return;
+    }
+
+    // New selection drawing
+    isDrawing = true;
+    startX = e.clientX + window.scrollX;
+    startY = e.clientY + window.scrollY;
+    selRect = { left: startX, top: startY, width: 0, height: 0 };
+    if (selection) {
+      selection.style.display = 'none'; // Hide current while drawing new
+    }
+    document.body.style.userSelect = 'none'; // prevent text selection
+  }
+
+  function handleMouseMove(e) {
+    if (isDrawing) {
+      const currentX = e.clientX + window.scrollX;
+      const currentY = e.clientY + window.scrollY;
+
+      selRect.left = Math.min(startX, currentX);
+      selRect.top = Math.min(startY, currentY);
+      selRect.width = Math.abs(currentX - startX);
+      selRect.height = Math.abs(currentY - startY);
+
+      if (selection) selection.style.display = 'block';
       renderSelection();
-    } else if (e.key === 'ArrowUp') {
-      e.preventDefault();
-      if (e.shiftKey) {
-        selRect.height = Math.max(step, selRect.height - step);
-      } else {
-        const oldTop = selRect.top;
-        selRect.top = Math.max(0, selRect.top - step);
-        selRect.height += (oldTop - selRect.top);
-        if (selRect.top < window.scrollY + 100) {
-          window.scrollBy(0, -step);
-        }
-      }
+    } else if (isDragging) {
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+
+      selRect.left += dx;
+      selRect.top += dy;
+
+      startX = e.clientX;
+      startY = e.clientY;
       renderSelection();
-    } else if (e.key === 'ArrowRight') {
-      e.preventDefault();
-      if (e.shiftKey) {
-        selRect.width = Math.max(step, selRect.width - step);
-      } else {
-        selRect.width += step;
-        const viewportRight = window.scrollX + window.innerWidth;
-        if (selRect.left + selRect.width > viewportRight - 100) {
-          window.scrollBy(step, 0);
-        }
+    } else if (isResizing) {
+      const dx = e.clientX - startX;
+      const dy = e.clientY - startY;
+
+      if (resizeHandle.includes('e')) {
+        selRect.width += dx;
       }
-      renderSelection();
-    } else if (e.key === 'ArrowLeft') {
-      e.preventDefault();
-      if (e.shiftKey) {
-        selRect.width = Math.max(step, selRect.width - step);
-      } else {
-        const oldLeft = selRect.left;
-        selRect.left = Math.max(0, selRect.left - step);
-        selRect.width += (oldLeft - selRect.left);
-        if (selRect.left < window.scrollX + 100) {
-          window.scrollBy(-step, 0);
-        }
+      if (resizeHandle.includes('s')) {
+        selRect.height += dy;
       }
+      if (resizeHandle.includes('w')) {
+        selRect.left += dx;
+        selRect.width -= dx;
+      }
+      if (resizeHandle.includes('n')) {
+        selRect.top += dy;
+        selRect.height -= dy;
+      }
+
+      // Prevent negative size
+      if (selRect.width < 0) { selRect.left += selRect.width; selRect.width = Math.abs(selRect.width); resizeHandle = resizeHandle.replace('w', 'e'); }
+      if (selRect.height < 0) { selRect.top += selRect.height; selRect.height = Math.abs(selRect.height); resizeHandle = resizeHandle.replace('n', 's'); }
+
+      startX = e.clientX;
+      startY = e.clientY;
       renderSelection();
     }
   }
 
+  function handleMouseUp(e) {
+    isDrawing = false;
+    isDragging = false;
+    isResizing = false;
+    document.body.style.userSelect = '';
+
+    // Ensure min size after drawing
+    if (selRect.width < 20 || selRect.height < 20) {
+      if (!selection) {
+        // Default if just clicked without dragging
+        selRect = {
+          left: window.scrollX + (window.innerWidth - 400) / 2,
+          top: window.scrollY + (window.innerHeight - 300) / 2,
+          width: 400, height: 300
+        };
+      }
+    }
+    renderSelection();
+  }
+
+  window.addEventListener('mousedown', handleMouseDown);
+  window.addEventListener('mousemove', handleMouseMove);
+  window.addEventListener('mouseup', handleMouseUp);
+  window.addEventListener('scroll', () => { if (selection) renderSelection(); });
+
+  // Handle keyboard events (keep basic support)
+  function handleKeyDown(e) {
+    if (e.key === 'Escape') closeOverlay();
+  }
+
   window.addEventListener('keydown', handleKeyDown);
-  window.addEventListener('scroll', renderSelection);
 
   function closeOverlay() {
+    window.removeEventListener('mousedown', handleMouseDown);
+    window.removeEventListener('mousemove', handleMouseMove);
+    window.removeEventListener('mouseup', handleMouseUp);
     window.removeEventListener('keydown', handleKeyDown);
-    window.removeEventListener('scroll', renderSelection);
+    backdrop.style.clipPath = 'none'; // reset
     overlay.remove();
   }
 
@@ -131,17 +220,51 @@
     // Hide UI
     overlay.style.display = 'none';
 
+    // Preparation: Hide scrollbars and disable smooth scrolling
+    const originalOverflow = document.documentElement.style.overflow;
+    const originalScrollBehavior = document.documentElement.style.scrollBehavior;
+    document.documentElement.style.overflow = 'hidden';
+    document.documentElement.style.scrollBehavior = 'auto';
+
+    // Find and hide fixed/sticky elements
+    const hiddenElements = [];
+    const allElements = document.querySelectorAll('*');
+    allElements.forEach(el => {
+      const style = window.getComputedStyle(el);
+      if (style.position === 'fixed' || style.position === 'sticky') {
+        if (style.display !== 'none' && style.visibility !== 'hidden' && style.opacity !== '0') {
+          hiddenElements.push({ el, originalVisibility: el.style.visibility });
+          el.style.visibility = 'hidden';
+        }
+      }
+    });
+
     try {
-      const dpr = window.devicePixelRatio || 1;
+      let dpr = window.devicePixelRatio || 1;
+
+      // Calculate max width/height
+      let canvasWidth = selRect.width * dpr;
+      let canvasHeight = selRect.height * dpr;
+
+      // Canvas memory limit safety check (16384 is a common browser limit for canvas size)
+      const MAX_DIMENSION = 16000;
+      if (canvasWidth > MAX_DIMENSION || canvasHeight > MAX_DIMENSION) {
+        const scale = Math.min(MAX_DIMENSION / canvasWidth, MAX_DIMENSION / canvasHeight);
+        dpr = dpr * scale;
+        canvasWidth = selRect.width * dpr;
+        canvasHeight = selRect.height * dpr;
+        console.warn('Selection too large, scaling down devicePixelRatio to fit canvas memory limits.');
+      }
+
       const canvas = document.createElement('canvas');
-      canvas.width = selRect.width * dpr;
-      canvas.height = selRect.height * dpr;
+      canvas.width = canvasWidth;
+      canvas.height = canvasHeight;
       const ctx = canvas.getContext('2d');
 
       let currentY = selRect.top;
       const endY = selRect.top + selRect.height;
       const viewportHeight = window.innerHeight;
-      
+
       const endX = selRect.left + selRect.width;
       const viewportWidth = window.innerWidth;
 
@@ -150,7 +273,8 @@
         let currentX = selRect.left;
         while (currentX < endX) {
           window.scrollTo(currentX, currentY);
-          await new Promise(r => setTimeout(r, 300));
+          // Wait a tiny bit for render
+          await new Promise(r => setTimeout(r, 150));
 
           const actualScrollX = window.scrollX;
           const actualScrollY = window.scrollY;
@@ -180,7 +304,7 @@
 
             ctx.drawImage(
               img,
-              sourceX * dpr, sourceY * dpr, intersectWidth * dpr, intersectHeight * dpr,
+              sourceX * (window.devicePixelRatio || 1), sourceY * (window.devicePixelRatio || 1), intersectWidth * (window.devicePixelRatio || 1), intersectHeight * (window.devicePixelRatio || 1),
               destX * dpr, destY * dpr, intersectWidth * dpr, intersectHeight * dpr
             );
           }
@@ -190,17 +314,27 @@
         currentY += viewportHeight;
       }
 
-      // Save
+      // Save via Preview Tab
       const finalDataUrl = canvas.toDataURL('image/jpeg', 0.9);
-      const a = document.createElement('a');
-      a.href = finalDataUrl;
-      a.download = 'screenshot.jpg';
-      a.click();
+      chrome.runtime.sendMessage({ action: 'openPreview', dataUrl: finalDataUrl }, (response) => {
+        if (chrome.runtime.lastError) {
+          console.error(chrome.runtime.lastError);
+          // Fallback if background message fails
+          const a = document.createElement('a');
+          a.href = finalDataUrl;
+          a.download = 'screenshot_fallback.jpg';
+          a.click();
+        }
+      });
 
     } catch (err) {
       console.error(err);
       alert('Failed to capture screenshot');
     } finally {
+      // Restore elements
+      hiddenElements.forEach(item => item.el.style.visibility = item.originalVisibility);
+      document.documentElement.style.overflow = originalOverflow;
+      document.documentElement.style.scrollBehavior = originalScrollBehavior;
       closeOverlay();
     }
   }

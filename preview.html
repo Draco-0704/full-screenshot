@@ -1,0 +1,63 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Screenshot Preview</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      background: #1e1e1e;
+      color: #fff;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      margin: 0;
+      padding: 20px;
+      min-height: 100vh;
+    }
+    .header {
+      display: flex;
+      gap: 15px;
+      margin-bottom: 20px;
+    }
+    button {
+      padding: 10px 20px;
+      font-size: 16px;
+      cursor: pointer;
+      border: none;
+      border-radius: 5px;
+      font-weight: bold;
+    }
+    #downloadBtn {
+      background-color: #4CAF50;
+      color: white;
+    }
+    #copyBtn {
+      background-color: #2196F3;
+      color: white;
+    }
+    .image-container {
+      max-width: 90%;
+      background: #333;
+      padding: 10px;
+      border-radius: 8px;
+      box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+      overflow: auto; /* Allow scrolling if image is very large */
+    }
+    img {
+      max-width: 100%;
+      height: auto;
+      display: block;
+    }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <button id="downloadBtn">Download Image</button>
+    <button id="copyBtn">Copy to Clipboard</button>
+  </div>
+  <div class="image-container">
+    <img id="previewImage" src="" alt="Screenshot Preview">
+  </div>
+  <script src="preview.js"></script>
+</body>
+</html>

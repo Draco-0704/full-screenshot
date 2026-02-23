@@ -1,0 +1,14 @@
+{
+  "manifest_version": 3,
+  "name": "Scroll & Crop Screenshot",
+  "version": "1.0",
+  "description": "Take a screenshot of any length. Use the down arrow key to increase the size.",
+  "permissions": ["activeTab", "scripting", "tabs"],
+  "host_permissions": ["<all_urls>"],
+  "action": {
+    "default_title": "Take Screenshot"
+  },
+  "background": {
+    "service_worker": "background.js"
+  }
+}
